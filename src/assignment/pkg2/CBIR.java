@@ -44,7 +44,7 @@ public class CBIR extends JFrame {
     private JLabel photographLabel = new JLabel();  //container to hold a large 
     private JButton[] button; //creates an array of JButtons
     private JCheckBox[] checkBoxes;
-    private JPanel[] RFButtons; // panels contain buttons along with corresponging checkboxes
+    private JPanel[] RFPanels; // panels contain buttons along with corresponging checkboxes
     private int[] buttonOrder = new int[101]; //creates an array to keep up with the image order
     private double[] imageSize = new double[101]; //keeps up with the image sizes
     private GridLayout gridLayout1;
@@ -55,13 +55,14 @@ public class CBIR extends JFrame {
     private JPanel panelBottom2;
     private JPanel panelTop;
     private JPanel buttonPanel;
-    private int[][] intensityMatrix = new int[100][26];
-    private int[][] colorCodeMatrix = new int[100][65];
-    double normalizedFeatureMatrix[][] = new double[100][90];
+    private double[][] intensityMatrix = new double[100][26];
+    private double[][] colorCodeMatrix = new double[100][65];
+    private double[][] normalizedFeatureMatrix = new double[100][90];
+    private boolean[][] relevanceMatrix = new boolean[100][100];
     int picNo = 0;
     int imageCount = 1; //keeps up with the number of images displayed since the first page.
     int pageNo = 1;
-    boolean checkBoxesActive = true;
+    boolean checkBoxesActive = false;
 
     // This method was written by Professor Chen as part of the provided sample code.
     public static void main(String args[]) {
@@ -125,8 +126,9 @@ public class CBIR extends JFrame {
 
         button = new JButton[101];
         checkBoxes = new JCheckBox[101];
-        RFButtons = new JPanel[101];
-        GridLayout checkButtonLayout = new GridLayout(2, 1, 0, 0);
+        RFPanels = new JPanel[101];
+        //GridLayout checkButtonLayout = new GridLayout(2, 1, 0, 0);
+        //BorderLayout bLayout = new BorderLayout();
         /*This for loop goes through the images in the database and stores them as icons and adds
          * the images to JButtons and then to the JButton array
          */
@@ -142,9 +144,10 @@ public class CBIR extends JFrame {
                 // create checkboxes and panels to hold them with corresponding image
                 checkBoxes[i] = new JCheckBox();
                 checkBoxes[i].setText("" + i + ".jpg");
-                RFButtons[i] = new JPanel(checkButtonLayout);
-                RFButtons[i].add(button[i]);
-                RFButtons[i].add(checkBoxes[i]);
+                // TODO: Add ItemListener for each checkbox
+                RFPanels[i] = new JPanel(new BorderLayout());
+                RFPanels[i].add(button[i], BorderLayout.CENTER);
+                RFPanels[i].add(checkBoxes[i], BorderLayout.SOUTH);
                 
                 buttonOrder[i] = i;
             }
@@ -156,13 +159,14 @@ public class CBIR extends JFrame {
         displayFirstPage();
     }
 
+    
     /*This method opens the intensity text file containing the intensity matrix with the histogram bin values for each image.
      * The contents of the matrix are processed and stored in a two dimensional array called intensityMatrix.
      */
     // This method was originally provided by Professor Chen as part of the provided 
     // sample code and was completed by Galen Deal.
     public void readIntensityFile() {
-        intensityMatrix = readIntMatrixFromFile("intensity.txt");
+        intensityMatrix = readMatrixFromFile("intensity.txt");
     }
 
     /*This method opens the color code text file containing the color code matrix with the histogram bin values for each image.
@@ -171,39 +175,19 @@ public class CBIR extends JFrame {
     // This method was originally provided by Professor Chen as part of the provided 
     // sample code and was completed by Galen Deal.
     private void readColorCodeFile() {
-        colorCodeMatrix = readIntMatrixFromFile("colorCode.txt");
+        colorCodeMatrix = readMatrixFromFile("colorCode.txt");
 
     }
     
     
     private void readNormalizedFeatureMatrixFile() {
-        normalizedFeatureMatrix = readDoubleMatrixFromFile("normalized_features.txt");
+        normalizedFeatureMatrix = readMatrixFromFile("normalized_features.txt");
     }
     
 
-    // Opens the file named by the passed String and reads and returns the 
-    // int[][] matrix stored in that file. 
-    private int[][] readIntMatrixFromFile(String filename) {
-        int retrievedMatrix[][] = null;
-        try {
-            // Open file and read the matrix
-            ObjectInputStream inputStream;
-            inputStream = new ObjectInputStream(new FileInputStream(filename));
-            retrievedMatrix = (int[][]) inputStream.readObject();
-        } catch (FileNotFoundException EE) {
-            System.out.println("The file " + filename + " does not exist");
-        } catch (IOException IOE) {
-            System.out.println("IOException when reading from " + filename);
-        } catch (ClassNotFoundException CNFE) {
-            System.out.println("ClassNotFoundException when reading from " + filename);
-        }
-
-        return retrievedMatrix;
-    }
-    
     // Opens the file named by the passed String and reads and returns the 
     // double[][] matrix stored in that file. 
-    private double[][] readDoubleMatrixFromFile(String filename) {
+    private double[][] readMatrixFromFile(String filename) {
         double retrievedMatrix[][] = null;
         try {
             // Open file and read the matrix
@@ -220,6 +204,7 @@ public class CBIR extends JFrame {
 
         return retrievedMatrix;
     }
+    
 
     /*This method displays the first twenty images in the panelBottom.  The for loop starts at number one and gets the image
      * number stored in the buttonOrder array and assigns the value to imageButNo.  The button associated with the image is 
@@ -234,7 +219,8 @@ public class CBIR extends JFrame {
             imageButNo = buttonOrder[i];
             
             if (checkBoxesActive) {
-                panelBottom1.add(RFButtons[imageButNo]);
+                RFPanels[imageButNo].add(button[imageButNo], BorderLayout.CENTER);
+                panelBottom1.add(RFPanels[imageButNo]);
             } else {
                 panelBottom1.add(button[imageButNo]);
             }
@@ -247,11 +233,11 @@ public class CBIR extends JFrame {
     }
     
     
-    private void clearCheckBoxes() {
-        for (int i = 1; i < 101; i++) {
-            checkBoxes[i].setSelected(false);
-        }
-    }
+//    private void clearCheckBoxes() {
+//        for (int i = 1; i < 101; i++) {
+//            checkBoxes[i].setSelected(false);
+//        }
+//    }
 
     /*This class implements an ActionListener for each iconButton.  When an icon button is clicked, the image on the 
      * the button is added to the photographLabel and the picNo is set to the image number selected and being displayed.
@@ -268,9 +254,9 @@ public class CBIR extends JFrame {
         }
 
         public void actionPerformed(ActionEvent e) {
-            clearCheckBoxes();
             photographLabel.setIcon(iconUsed);
             picNo = pNo;
+            updateCheckBoxes(picNo);
         }
 
     }
@@ -290,7 +276,11 @@ public class CBIR extends JFrame {
                 panelBottom1.removeAll();
                 for (int i = imageCount; i < endImage; i++) {
                     imageButNo = buttonOrder[i];
-                    panelBottom1.add(button[imageButNo]);
+                    if (checkBoxesActive) {
+                        panelBottom1.add(RFPanels[imageButNo]);
+                    } else {
+                        panelBottom1.add(button[imageButNo]);
+                    }
                     imageCount++;
 
                 }
@@ -321,7 +311,11 @@ public class CBIR extends JFrame {
                  */
                 for (int i = startImage; i < endImage; i++) {
                     imageButNo = buttonOrder[i];
-                    panelBottom1.add(button[imageButNo]);
+                    if (checkBoxesActive) {
+                        panelBottom1.add(RFPanels[imageButNo]);
+                    } else {
+                        panelBottom1.add(button[imageButNo]);
+                    }
                     imageCount--;
 
                 }
@@ -345,9 +339,9 @@ public class CBIR extends JFrame {
     private class intensityHandler implements ActionListener {
 
         public void actionPerformed(ActionEvent e) {
-            clearCheckBoxes();
             int pic = (picNo - 1);
-            displayByDifference(intensityMatrix, pic);
+            checkBoxesActive = false;
+            displayByDifference(intensityMatrix, pic, false);
         }
 
     }
@@ -364,18 +358,40 @@ public class CBIR extends JFrame {
     private class colorCodeHandler implements ActionListener {
 
         public void actionPerformed(ActionEvent e) {
-            clearCheckBoxes();
             int pic = (picNo - 1);
-            displayByDifference(colorCodeMatrix, pic);
+            checkBoxesActive = false;
+            displayByDifference(colorCodeMatrix, pic, false);
         }
     }
     
+    // TODO: THIS HAS PROBLEMS. Currently, if you uncheck a checkbox and then
+    // search again with this button, the checkbox will stay unselected, although
+    // the corresponding image will still be flagged as "relevant." To solve this,
+    // consider adding a listener for each checkbox that, when it detects that the
+    // checkbox has been deselected and then flags its corresponding image as 
+    // not relevant for the currently selected image
     private class comboRFHandler implements ActionListener {
 
         public void actionPerformed(ActionEvent e) {
-            //clearCheckBoxes();
+            
+//            for (int i = 1; i < 21; i++) {
+//                System.out.println(buttonOrder[i]);
+//            }
+            
             int pic = (picNo - 1);
-            displayByDifference(normalizedFeatureMatrix, pic);
+            checkBoxesActive = true;
+            displayByDifference(normalizedFeatureMatrix, pic, true);
+        }
+    }
+    
+        
+    // Updates checked status of checkboxes to match relevance array of selected
+    // image
+    private void updateCheckBoxes(int picNo) {
+        boolean[] relevanceArray = relevanceMatrix[picNo - 1]; // pic #s start at 1
+        for (int i = 0; i < relevanceArray.length; i++) {
+            // checkBoxes indices start at 1
+            checkBoxes[i + 1].setSelected(relevanceArray[i]);
         }
     }
 
@@ -386,21 +402,26 @@ public class CBIR extends JFrame {
     // using the passed histogram matrix. Once all the distances have been
     // calculated, the buttons in buttonOrder are sorted from lowest to highest
     // distance and re-displayed.
-    private void displayByDifference(int[][] imageData, int pic) {
-
-        int selectedPicIBins[] = imageData[pic];
-        int selectedPicSize = selectedPicIBins[0];
+    private void displayByDifference(double[][] imageData, int pic, boolean RF) {
+        double selectedPicIBins[] = imageData[pic];
+        int selectedPicSize = (int) selectedPicIBins[0];
         ButtonDistance distanceArray[] = new ButtonDistance[imageData.length];
+        
+        if (RF) {
+            updateRelevanceArray(pic);
+            
+            double[] featureWeights = calculateFeatureWeights();
+        }
 
         // for each image in the image set
         for (int i = 0; i < imageData.length; i++) {
             // retrieve the data for the image to compare
-            int compPicIBins[] = imageData[i];
-            int compPicSize = compPicIBins[0];
+            double compPicIBins[] = imageData[i];
+            int compPicSize = (int)compPicIBins[0];
 
             // calculate the Manhattan distance between the two images
             double mDistance = 0;
-            for (int bin = 1; bin < selectedPicIBins.length; bin++) {
+            for (int bin = 1; bin < imageData[0].length; bin++) {
                 double binDistance = Math.abs(
                         ((double) selectedPicIBins[bin] / (double) selectedPicSize)
                         - ((double) compPicIBins[bin] / (double) compPicSize)
@@ -422,6 +443,84 @@ public class CBIR extends JFrame {
 
         imageCount = 1;
         displayFirstPage();
+    }
+    
+    // This method examines all currently checked checkboxes and adds the
+    // corresponding images to the relevance array of the currently selected
+    // image
+    private void updateRelevanceArray(int picNo) {
+        for (int i = 0; i < relevanceMatrix.length; i++) {
+            // i+1 is used here because checkBoxes incices start at 1
+            if (checkBoxes[i + 1].isSelected()) {
+                relevanceMatrix[picNo][i] = true;
+            }
+        }
+    }
+    
+    private double[] calculateFeatureWeights() {
+        ArrayList<double[]> relevantImages = new ArrayList<double[]>();
+        int numFeatures = normalizedFeatureMatrix[0].length; // number of features
+        
+        // Add the feature values of all relevant images to the ArrayList
+        // releventImages
+        //
+        // for each flag in current image's relevance array
+        for (int i = 0; i < relevanceMatrix.length; i++) {
+            // if the current flag is true or corresponds to the current image
+            if (relevanceMatrix[picNo - 1][i] || i == picNo - 1) {
+                // add the corresponding image's feature values to relevantImages
+                relevantImages.add(normalizedFeatureMatrix[i]);
+            }
+        }
+        
+        // build new transposed matrix from relevant images
+        double[][] relevantImageFeatures = new double[numFeatures][relevantImages.size()];
+        for (int i = 0; i < relevantImages.size(); i++) { // i is image
+            for (int j = 0; j < numFeatures; j++) { // j is feature
+                relevantImageFeatures[j][i] = relevantImages.get(i)[j];
+            }
+        }
+        
+        // matrix to store mean and std for each feature
+        double[][] featureParams = new double[numFeatures][2];
+        double smallestStdDev = -1; // track smallest non-zero std deviation
+        // calculate weights for each feature
+        for (int i = 0; i < numFeatures; i++) {
+            // get the mean and standard deviation
+            double[] meanStdDev = calculateMeanStdDev(relevantImageFeatures[i]);
+        }
+        
+        return null;
+    }
+    
+    
+    private double[] calculateMeanStdDev(double feature[]) {
+        int n = feature.length; // number of elements
+
+        // calculate mean
+        double total = 0;
+        for (int i = 0; i < n; i++) {
+            total += feature[i];
+        }
+        double mean = (double)total / n;
+        
+        // calculate variance
+        double sum = 0;
+        for (int i = 0; i < n; i++) {
+            double temp = feature[i] - mean;
+            temp *= temp;
+            sum += temp;
+        }
+        double variance = sum / (n - 1);
+        
+        // calculate standard deviation
+        double stdDev = Math.sqrt(variance);
+        
+        double meanStdDev[] = new double[2];
+        meanStdDev[0] = mean;
+        meanStdDev[1] = stdDev;
+        
+        return meanStdDev;
     }
 
     // This class associates a button number with a distance value. It exists so

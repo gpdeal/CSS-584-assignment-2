@@ -19,10 +19,11 @@ import java.awt.Color;
 public class readImage {
 
     int imageCount = 1;
-    int intensityBins[] = new int[26];
-    int intensityMatrix[][] = new int[100][26];
-    int colorCodeBins[] = new int[65];
-    int colorCodeMatrix[][] = new int[100][65];
+    double intensityBins[] = new double[26];
+    double intensityMatrix[][] = new double[100][26];
+    double colorCodeBins[] = new double[65];
+    double colorCodeMatrix[][] = new double[100][65];
+    double originalFeatureMatrix[][] = new double[100][90];
     double normalizedFeatureMatrix[][] = new double[100][90];
 
     // This method was part of the sample code provided by Dr. Chen and was 
@@ -170,7 +171,7 @@ public class readImage {
     
     
     
-    private double[] calculateMeanStdDev(int feature[]) {
+    private double[] calculateMeanStdDev(double feature[]) {
         int n = feature.length; // number of elements
 
         // calculate mean
@@ -198,24 +199,21 @@ public class readImage {
         
         return meanStdDev;
     }
-    
-    
-    
-    
+   
     
     // this method calculates the normalized features of intensity and color
     // code and concatinates them into a single matrix, then writes that matrix
     // to normalized_features.txt
     //
-    // THIS REALLY SHOULD BE SPLIT INTO 2+ METHODS
+    // THIS REALLY SHOULD BE SPLIT INTO MULTIPLE METHODS
     private void writeNormalizedMatrix() {
-        double normParameters[][] = new double[89][2];
+        double normParameters[][] = new double[90][2];
 
-        // for each feature, put all values of that feature into a single double
-        // array
+        // for each feature, put all values of that feature into a single array
+        // of doubles
         for (int feature = 1; feature < 90; feature++) {
             // determine current matrix and index
-            int matrix[][];
+            double matrix[][];
             int index = feature;
             if (feature <= 25) { // first 25 features are intensity
                 matrix = intensityMatrix;
@@ -224,20 +222,23 @@ public class readImage {
                 index = feature - 25;
             }
             
-            int currentFeature[] = new int[100];
-            // for each image's value of that feature
+            double currentFeature[] = new double[100];
+            // for each image's value for the current feature, divide that value
+            // by the image's size and store the result in the currentFeature array
             for (int image = 0; image < matrix.length; image++) {
-                currentFeature[image] = matrix[image][index];
+                double rawValue = matrix[image][index];
+                double temp = rawValue / matrix[image][0];
+                currentFeature[image] = temp;
             }
             
             // for debugging
-            System.out.println("featureValues: " + Arrays.toString(currentFeature));
-            System.out.println("value of first image's current feature: " + matrix[0][index]);
+            //System.out.println("featureValues: " + Arrays.toString(currentFeature));
+            //System.out.println("value of first image's current feature: " + matrix[0][index]);
             
             double meanStdDev[] = calculateMeanStdDev(currentFeature);
              // this line is feature - 1 because intensity and color code
              // features begin at index 1 in their matrices (indices 0 store the
-             // image size
+             // image size)
             normParameters[feature - 1] = meanStdDev;
         }
         
@@ -245,30 +246,53 @@ public class readImage {
         // go through intensity and color code matrices, normalize their values,
         // and save them to normalized feature matrix
         for (int i = 0; i < 100; i++) { // images
-            for (int j = 0; j < 89; j++) { // features
+            for (int j = 1; j < 90; j++) { // features
                 // determine current matrix and index
-                int matrix[][];
-                int index = j + 1; // features start at index 1
-                if (j <= 24) { // first 25 features are intensity
+                double matrix[][];
+                int index = j;
+                if (j <= 25) { // first 25 features are intensity
                     matrix = intensityMatrix;
                 } else {
                     matrix = colorCodeMatrix;
-                    index = j - 24;
+                    index = j - 25;
                 }
+                
+                // j-1 used here because intensityMatrix indices start at 1
+                double featureMean = normParameters[j - 1][0];
+                double featureStdDev = normParameters[j - 1][1];
                 
                 // check for stdDev of 0 - if so, set normalized value to 0
-                if (normParameters[j][1] == 0) {
+                if (featureStdDev == 0) {
                     normalizedFeatureMatrix[i][j] = 0;
                 } else {
-                    double normalizedValue = ((double)matrix[i][index] - normParameters[j][0])
-                                             / normParameters[j][1];
+                    double featureValue = matrix[i][index] / matrix[i][0];
+                    double normalizedValue = (featureValue - featureMean) / featureStdDev;
                     normalizedFeatureMatrix[i][j] = normalizedValue;
                 }
-                
             }
         }
         
+        // write image size to 0th cell in each image's feature set
+        for (int i = 0; i < 100; i++) {
+            normalizedFeatureMatrix[i][0] = intensityMatrix[i][0];
+        }
+        
+        
         writeMatrixFile(normalizedFeatureMatrix, "normalized_features.txt");
+        
+        // for debugging
+        try {
+            PrintWriter writer = new PrintWriter("normalized_features_log.txt", "UTF-8");
+            
+            for (int i = 0; i < normalizedFeatureMatrix.length; i++) {
+                writer.println("Image " + i + " normalized features: " + Arrays.toString(normalizedFeatureMatrix[i]));
+            }
+            
+            writer.close();
+        } catch (Exception e) {
+            System.out.println("Error occurred when writing to file normalized_features_log.txt");
+        }
+        
         
         // for debugging
         //testNormMatrix(normParameters);
