@@ -46,7 +46,6 @@ public class CBIR extends JFrame {
     private JCheckBox[] checkBoxes;
     private JPanel[] RFPanels; // panels contain buttons along with corresponging checkboxes
     private int[] buttonOrder = new int[101]; //creates an array to keep up with the image order
-    private double[] imageSize = new double[101]; //keeps up with the image sizes
     private GridLayout gridLayout1;
     private GridLayout gridLayout2;
     private GridLayout gridLayout3;
@@ -385,8 +384,8 @@ public class CBIR extends JFrame {
     }
     
         
-    // Updates checked status of checkboxes to match relevance array of selected
-    // image
+    // This method updates the checked status of checkboxes to match relevance 
+    // array the of selected image
     private void updateCheckBoxes(int picNo) {
         boolean[] relevanceArray = relevanceMatrix[picNo - 1]; // pic #s start at 1
         for (int i = 0; i < relevanceArray.length; i++) {
@@ -402,31 +401,47 @@ public class CBIR extends JFrame {
     // using the passed histogram matrix. Once all the distances have been
     // calculated, the buttons in buttonOrder are sorted from lowest to highest
     // distance and re-displayed.
-    private void displayByDifference(double[][] imageData, int pic, boolean RF) {
-        double selectedPicIBins[] = imageData[pic];
-        int selectedPicSize = (int) selectedPicIBins[0];
+    private void displayByDifference(double[][] featureMatrix, int pic, boolean RF) {
+        double[][] imageData = featureMatrix;
+        double imageFeatures[] = imageData[pic];
+        int selectedPicSize = (int) imageFeatures[0];
         ButtonDistance distanceArray[] = new ButtonDistance[imageData.length];
         
+        // If relevance feedback is being used
         if (RF) {
+            // populate image's relevance array using currently checked boxes
             updateRelevanceArray(pic);
-            
+            // calculate feature weights based on relevant images
             double[] featureWeights = calculateFeatureWeights();
+            // apply feature weights to image data matrix
+            for (int i = 0; i < imageData.length; i++) {
+                for (int j = 1; j < featureWeights.length; j++) {
+                    imageData[i][j] *= featureWeights[j];
+                }
+            }
         }
 
         // for each image in the image set
         for (int i = 0; i < imageData.length; i++) {
             // retrieve the data for the image to compare
-            double compPicIBins[] = imageData[i];
-            int compPicSize = (int)compPicIBins[0];
+            double compFeatures[] = imageData[i];
+            int compPicSize = (int)compFeatures[0];
 
             // calculate the Manhattan distance between the two images
             double mDistance = 0;
             for (int bin = 1; bin < imageData[0].length; bin++) {
-                double binDistance = Math.abs(
-                        ((double) selectedPicIBins[bin] / (double) selectedPicSize)
-                        - ((double) compPicIBins[bin] / (double) compPicSize)
-                );
-                mDistance += binDistance;
+                double featureDistance = 0;
+                
+                if (RF) { // features already normalized, no need to divide by image size
+                    featureDistance = Math.abs((double) imageFeatures[bin]- (double) compFeatures[bin]);
+                } else {
+                    featureDistance = Math.abs(
+                            ((double) imageFeatures[bin] / (double) selectedPicSize)
+                            - ((double) compFeatures[bin] / (double) compPicSize)
+                    );
+                }
+                
+                mDistance += featureDistance;
             }
 
             // store the calculated distance along with the image number
@@ -457,14 +472,84 @@ public class CBIR extends JFrame {
         }
     }
     
+    // TODO: This should also probably be split up
     private double[] calculateFeatureWeights() {
-        ArrayList<double[]> relevantImages = new ArrayList<double[]>();
+        ArrayList<double[]> relevantImages;
+        double[][] relevantImageFeatures;
         int numFeatures = normalizedFeatureMatrix[0].length; // number of features
+        double[] featureWeights = new double[numFeatures];
         
-        // Add the feature values of all relevant images to the ArrayList
-        // releventImages
-        //
-        // for each flag in current image's relevance array
+        // get matrix of feature values for relevant images
+        relevantImages = getRelevantImages();
+        relevantImageFeatures = getMatrixByFeatures(relevantImages, numFeatures);
+        
+        // matrix to store mean and standard deviation for each feature
+        double[][] featureParams = new double[numFeatures][2];
+        double smallestStdDev = -1; // track smallest non-zero std deviation
+        
+        // first feature is image size and needs no weight calculated
+        featureWeights[0] = 1;
+        
+        // calculate weights for each feature with non-zero standard deviation
+        for (int i = 1; i < numFeatures; i++) {
+            // set all weights to 1/n if only 1 image is relevant
+            if (relevantImages.size() == 1) {
+                featureWeights[i] = 1.0 / numFeatures;
+                continue;
+            }
+            
+            // get the mean and standard deviation
+            double[] meanStdDev = calculateMeanStdDev(relevantImageFeatures[i]);
+            double mean = meanStdDev[0];
+            double stdDev = meanStdDev[1];
+            
+            // if standard deviation is not zero
+            if (stdDev != 0) {
+                // if standard deviation is smaller than previous smallest (or
+                // if previous smallest has not yet been found)
+                if (stdDev < smallestStdDev || smallestStdDev == -1) {
+                    smallestStdDev = stdDev;
+                }
+                
+                // calculate and save weight for this feature
+                featureWeights[i] = 1 / stdDev;
+            }
+            
+            // save mean and standard deviation for this feature for later use
+            featureParams[i][0] = mean;
+            featureParams[i][1] = stdDev;
+        }
+        
+        // only perform cleanup loop if more than 1 image is relevant
+        if (relevantImages.size() != 1) {
+            // loop back over features to handle features with standard deviation of
+            // zero
+            for (int i = 0; i < numFeatures; i++) {
+                double mean = featureParams[i][0];
+                double stdDev = featureParams[i][1];
+
+                // check for standard deviation of zero
+                if (stdDev == 0) {
+                    // if mean is zero, set weight to zero
+                    if (mean == 0) {
+                        featureWeights[i] = 0;
+                    } 
+                    // else set weight to 1/(smallest std dev/2)
+                    else {
+                        featureWeights[i] = 1 / (smallestStdDev / 2);
+                    }
+                }
+            }
+        }
+        
+        return featureWeights;
+    }
+    
+    // This method returns an ArrayList of doubles containing the data array for
+    // each image marked as relevant for the current query image
+    private ArrayList<double[]> getRelevantImages() {
+        ArrayList<double[]> relevantImages = new ArrayList<>();
+        
         for (int i = 0; i < relevanceMatrix.length; i++) {
             // if the current flag is true or corresponds to the current image
             if (relevanceMatrix[picNo - 1][i] || i == picNo - 1) {
@@ -473,26 +558,25 @@ public class CBIR extends JFrame {
             }
         }
         
+        return relevantImages;
+    }
+    
+    // This method takes an ArrayList of doubles containing all of the images
+    // marked as relevent for the current query image as well as an int indicating
+    // the number of features in each image and returns a matrix of doubles 
+    // arranged by feature (double[features][images])
+    private double[][] getMatrixByFeatures(ArrayList<double[]> relevantImages, int numFeatures) {
+        double[][] relevantImageFeatures;
+        
         // build new transposed matrix from relevant images
-        double[][] relevantImageFeatures = new double[numFeatures][relevantImages.size()];
+        relevantImageFeatures = new double[numFeatures][relevantImages.size()];
         for (int i = 0; i < relevantImages.size(); i++) { // i is image
             for (int j = 0; j < numFeatures; j++) { // j is feature
                 relevantImageFeatures[j][i] = relevantImages.get(i)[j];
             }
         }
-        
-        // matrix to store mean and std for each feature
-        double[][] featureParams = new double[numFeatures][2];
-        double smallestStdDev = -1; // track smallest non-zero std deviation
-        // calculate weights for each feature
-        for (int i = 0; i < numFeatures; i++) {
-            // get the mean and standard deviation
-            double[] meanStdDev = calculateMeanStdDev(relevantImageFeatures[i]);
-        }
-        
-        return null;
+        return relevantImageFeatures;
     }
-    
     
     private double[] calculateMeanStdDev(double feature[]) {
         int n = feature.length; // number of elements
@@ -523,6 +607,28 @@ public class CBIR extends JFrame {
         return meanStdDev;
     }
 
+//    private double getMDistance(double[][] imageData) {
+//        // calculate the Manhattan distance between the two images
+//            double mDistance = 0;
+//            for (int bin = 1; bin < imageData[0].length; bin++) {
+//                double featureDistance = 0;
+//                
+//                if (RF) { // features already normalized, no need to divide by image size
+//                    featureDistance = Math.abs((double) imageFeatures[bin]- (double) compFeatures[bin]);
+//                } else {
+//                    featureDistance = Math.abs(
+//                            ((double) imageFeatures[bin] / (double) selectedPicSize)
+//                            - ((double) compFeatures[bin] / (double) compPicSize)
+//                    );
+//                }
+//                
+//                mDistance += featureDistance;
+//            }
+//        
+//        
+//        return 0;
+//    }
+    
     // This class associates a button number with a distance value. It exists so
     // that images can be sorted by their distance value without losing track of
     // their assigned number.
